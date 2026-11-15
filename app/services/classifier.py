@@ -117,8 +117,10 @@ def parse_category(raw: object) -> str:
     return first
 
 
-def classify_ticket(narrative: str) -> str:
-    raw = generate(build_prompt(narrative))
+def classify_ticket(narrative: str, model: str | None = None) -> str:
+    # Preserve the Assignment 1 prompt, parser, and public single-model behavior.
+    # Model override is used solely for the Assignment 2 two-stage cascade.
+    raw = generate(build_prompt(narrative)) if model is None else generate(build_prompt(narrative), model=model)
     try:
         category = parse_category(raw)
     except InvalidCategoryError:
