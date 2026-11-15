@@ -44,7 +44,7 @@ def main():
             dst = (ROOT / "assignment2/speed" / setting)
             cmd = (
                 f'jmeter -n -t "{jmx}" -q "{props}" '
-                f'-l "{dst / f"run-{run}.jtl"}" -j "{dst / f"run-{run}.jmeter.log"}" '
+                f'-l "{dst / ("run-" + str(run) + ".jtl")}" -j "{dst / ("run-" + str(run) + ".jmeter.log")}" '
                 f'-Jhost={args.host} -Jport={args.port} -Jprotocol=http '
                 f'-Jrate={arrivals_per_hour:.8f} -Jduration_s={duration_s:.3f} '
                 f'-Jdrain_s={drain_s:.3f} -Jtimeout_ms={int(timeout_s*1000)} '
