@@ -9,6 +9,10 @@ services:
       OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-120}
       DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/tickets.db}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CLASSIFICATION_MODE: ${CLASSIFICATION_MODE:-single}
+      CASCADE_SMALL_MODEL: ${CASCADE_SMALL_MODEL:-llama3.2:3b}
+      CASCADE_LARGE_MODEL: ${CASCADE_LARGE_MODEL:-llama3.1:8b}
+      CASCADE_SETTING: ${CASCADE_SETTING:-A}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
