@@ -1,231 +1,268 @@
-# ICT3113 Assignment 1 — Financial Complaint Ticket Triage Service
+# ICT3113 — Financial Complaint Ticket Triage (Assignments 1 & 2)
 
 **Module:** ICT3113 Performance Optimisation and Design  
-**Team:** P2-7  
-**Project:** CPU-based financial complaint classification and performance evaluation
+**Team:** P2-7 (Group 07)  
+**Current focus:** **Assignment 2 — Fast Triage Within an Accuracy Floor**  
+**Stack:** Python 3.12, FastAPI, SQLite, Docker Compose, local Ollama (CPU-only), Apache JMeter 5.6.3
+
+> **Assignment 2 result:** **Qwen 2.5 7B** is the fastest **accuracy-qualified** configuration tested: **74/92 (80.43%)** held-out accuracy, **5.751 s** mean of three run-level POST p50 latencies, **15.578 s** pooled POST p95, and **159/159 successful** load-test requests. Both evaluated cascades failed at least one per-category accuracy floor. This is a recommendation **within the A2 comparison**, not a claim of production readiness or peak throughput compliance.
 
 ## Project overview
 
-This project investigates whether a financial services company can automatically route customer complaint tickets using a locally hosted language model. The client requires customer data to remain within its own infrastructure and has CPU-only servers, so the service uses Ollama locally rather than a public model API.
+The service automatically routes financial-services complaint narratives into exactly seven categories using locally hosted language models. The client requires complaints to stay on its own infrastructure and the evaluated server is CPU-only. The original Assignment 1 API, prompt and golden labels were retained for a controlled Assignment 2 comparison.
 
-We developed a Python 3.12 web API with SQLite storage and Docker support. Each new ticket is classified synchronously: the request waits for the model's response before the ticket is stored and the assigned category returned. The Assignment 1 baseline deliberately does not use caching, queues, batching or background classification.
+Categories: **Credit reporting**, **Debt collection**, **Mortgage**, **Credit card**, **Bank account or service**, **Consumer loan**, **Money transfer or service**.
 
 ```text
-Client / JMeter
-      |
-      v
-Python API (POST /tickets)
-      |
-      v
-Local Ollama model (CPU)
-      |
-      v
-SQLite storage -> HTTP response
+Client / separate JMeter load generator (PC2)
+                   |
+                   v
+             FastAPI on PC1
+             POST /tickets
+                   |
+              Mode selector
+               /       \
+        Single model   Two-stage cascade
+           |          Small: llama3.2:3b
+           |             |
+           |        Category-based routing
+           |           /         \
+           |        Accept     Escalate to
+           |        small      llama3.1:8b
+           \___________|__________/
+                       |
+                SQLite storage
+                       |
+                 HTTP 201 result
 
-GET /search -> Search stored tickets
-GET /stats  -> Counts by category
+GET /search   -> search saved tickets
+GET /stats    -> counts by classified category
 ```
 
-The seven supported categories are **Credit reporting, Debt collection, Mortgage, Credit card, Bank account or service, Consumer loan,** and **Money transfer or service**. Tickets enter the service only through `POST /tickets`; the assignment dataset is not directly imported into the database.
+**Implementation:** A request is classified synchronously before storage and response. Neither assignment uses a prediction cache, asynchronous queue, batching, or an additional classifier. The original category prompt and output parser are shared by the single and cascade paths. Request logs capture model routing, escalation, durations and request IDs without storing full complaint narratives in the structured log.
 
-## Team members and contributions
+## Assignment 2 design
 
-| Member | Role | Main contributions |
+### Frozen evaluation and decision criteria
+
+The Assignment 1 adjudicated golden set has **180 tickets**. Original source-row parity defines the immutable A2 split:
+
+- **Odd original row numbers:** 88 tuning tickets (used only to design the routing rule).
+- **Even original row numbers:** 92 held-out test tickets (used for final A2 accuracy).
+- The A1 **highest-accuracy model**, `llama3.1:8b`, is the reference regardless of the A1 operating recommendation. Its previously recorded even-row prediction result was **77/92 (83.70%)**.
+- **Overall floor:** reference test accuracy minus **10 percentage points** = **73.70%**.
+- **Every category floor:** the corresponding reference category accuracy minus **15 percentage points**. Passing overall accuracy alone is insufficient; all seven categories must also pass.
+- A failed classification is counted as incorrect. Due to small denominators, results are reported with correct/total counts, not just percentages.
+
+The frozen split, rule and prospective predictions were committed before new A2 benchmarking. See [golden split](assignment2/golden_split.csv), [escalation rule](assignment2/escalation_rule.md) and [prediction record](assignment2/prediction_record.md). Do **not** edit these pre-registered artifacts to match the observed results.
+
+### Two-stage cascade
+
+The first stage runs **`llama3.2:3b`**; escalations run **`llama3.1:8b`** using the same prompt. Routing depends only on the *first model's predicted category*, never the true label.
+
+| Frozen setting | Accept the first-stage prediction when… | Otherwise |
 |---|---|---|
-| **Owen (Person 1)** | Backend and platform | Implemented the API endpoints, SQLite integration, Docker configuration, request logging, backend/integration tests and project structure. |
-| **Alyssa (Person 2)** | Model and classification | Developed the Ollama client, classification prompt and output validation; configured model switching and documented candidate models and digests. |
-| **Shaqeel (Person 3)** | Golden test set | Prepared the team dataset, labelling protocol, independent annotation sheets, agreement calculations, disagreement records and final golden set. |
-| **Shamik (Person 4)** | Workload and requirements | Developed the workload estimates, performance and accuracy requirements, and pre-test prediction record. |
-| **Daffa (Person 5)** | Performance testing | Prepared and executed the JMeter load/stress and accuracy testing workflows, processed results, reconciled logs and documented test procedures. |
+| **Cascade A — conservative** | Predicted category is exactly **Mortgage** | Call `llama3.1:8b` |
+| **Cascade B — broader** | Predicted category is **Mortgage** or **Bank account or service** | Call `llama3.1:8b` |
 
-The division of work is described further in [the team development plan](docs/team_development_plan.md).
+An escalated request invokes both models in sequence; an accepted request invokes only the small model. The HTTP interface still returns and stores **one final category**. [Implementation](app/services/cascade.py).
 
-## Project files
+### A2 accuracy results — held-out 92 tickets
 
-| Location | Purpose |
-|---|---|
-| `app/` | API routes, classification services, schemas and database |
-| `tests/` | Automated API, classifier and integration tests |
-| `scripts/` | Dataset preparation, accuracy evaluation, benchmarking and analysis |
-| `data/` | Team dataset, labelling files, golden test set and local database |
-| `jmeter/` | Open-loop JMeter test plan and inputs |
-| `results/` | Accuracy, load, stress and supporting measurement evidence |
-| `logs/` | Structured API request logs |
-| `docs/` | Models, workload, requirements, predictions, playbook and recommendations |
+All six configurations were evaluated fresh, as the observed A2 Ollama version differed from Assignment 1. The figures below are **A2 test-set measurements**, not the original A1 full-set scores.
 
-## Setup instructions (Windows)
+| Configuration | Correct / 92 | Accuracy | All floors met? | Main failed floors |
+|---|---:|---:|---|---|
+| **Llama 3.1 8B** (`llama3.1:8b`) | **76/92** | **82.61%** | **Yes** | — |
+| **Qwen 2.5 7B** (`qwen2.5:7b`) | **74/92** | **80.43%** | **Yes** | — |
+| Cascade A | 74/92 | 80.43% | **No** | Consumer loan: 9/13 |
+| Cascade B | 68/92 | 73.91% | **No** | Consumer loan: 9/13; Money transfer or service: 6/11 |
+| Gemma 2 2B (`gemma2:2b`) | 59/92 | 64.13% | **No** | Overall; Consumer loan; Money transfer |
+| Llama 3.2 3B (`llama3.2:3b`) | 54/92 | 58.70% | **No** | Overall; Credit card; Consumer loan; Money transfer |
 
-### 1. Prerequisites
+**Accuracy-floor detail** (derived from the frozen reference predictions on the even-row split):
 
-Install **Python 3.12**, **Docker Desktop** and **Ollama**. Git is useful for cloning the repository. For formal performance testing, install **Apache JMeter 5.6.3** and Java on a **separate load-generator machine**; running JMeter on the service machine would interfere with CPU measurements.
+| True category | Test n | Reference correct | Category floor |
+|---|---:|---:|---:|
+| Credit reporting | 17 | 15/17 | 73.24% |
+| Debt collection | 8 | 4/8 | 35.00% |
+| Mortgage | 15 | 13/15 | 71.67% |
+| Credit card | 13 | 11/13 | 69.62% |
+| Bank account or service | 15 | 12/15 | 65.00% |
+| Consumer loan | 13 | 11/13 | 69.62% |
+| Money transfer or service | 11 | 11/11 | 85.00% |
 
-Clone this repository and open PowerShell in its root directory:
+**Note:** The reference floor is based on the frozen A1 test predictions (77/92); a fresh A2 run of Llama 3.1 scored 76/92. Category denominators are small, especially Debt collection (n=8), so a one-ticket difference can change pass/fail.
+
+Complete correct counts, per-category accuracy, confusion matrices, raw predictions and timestamps are in [A2 accuracy evidence](assignment2/accuracy/). Cascade accuracy-stage splits are available in the [log reconciliation outputs](assignment2/accuracy/).
+
+## Assignment 2 CPU-only performance benchmark
+
+### Test environment and fixed load
+
+- **PC1 (system under test):** Intel Core i7-10510U, 4 cores / 8 threads, approximately 15.8 GB RAM; Windows 11; Docker-hosted FastAPI plus **Ollama 0.40.16 on the Windows host**. The model tags/digest prefixes were checked against A1. CPU-only execution was checked using `ollama ps` and `num_gpu: 0`. Docker restart alone **does not restart host Ollama**.
+- **PC2 (separate generator):** Ryzen 7 5800X3D desktop, Java 17, Apache JMeter **5.6.3**. This avoided running load generation on PC1.
+- **Calibration:** following Ollama restart and warm-up, three distinct non-golden tickets (rows **7203**, **7409**, **7555**) through the reference model took **2.5438**, **2.8175**, **3.1268** seconds. Middle value **S = 2.8175 s**.
+- **Identical offered load for every configuration:** one random open-loop arrival per **2S = 5.635 s** on average, equivalent to **638.864 tickets/hour**, over **300 seconds**, followed by **360 seconds drain**. HTTP response timeout **300 seconds**.
+- **Workload:** fixed 48 non-golden narratives in [the speed row list](assignment2/speed_workload_rows.csv), sent from [the JMeter TSV](jmeter/data/a2_speed_narratives.tsv). Warm-up rows **7389**, **7643**, **7631** were distinct from the measured workload. Each of four configurations was run **three times** with predeclared seeds **311301, 311302, 311303**.
+- Speed was measured for the two accuracy-qualified single models and **both cascades regardless of accuracy outcome**. The nonqualifying Gemma and Llama 3.2 single models were scored for accuracy but not speed-tested.
+- Figures use **successful POST /tickets** responses: p50 for **each run**, the mean and range of three run p50s, and **pooled p95 from 159 successful samples** per configuration. **No p99 is used for A2**.
+
+### Measured A2 latency and reliability
+
+| Configuration | Run 1 p50 | Run 2 p50 | Run 3 p50 | Mean p50 | p50 spread | Pooled p95 | Successful |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **Qwen 2.5 7B** | 5.875 s | 5.603 s | 5.774 s | **5.751 s** | 0.272 s | **15.578 s** | 159/159 |
+| Llama 3.1 8B | 7.066 s | 6.020 s | 6.428 s | 6.505 s | 1.046 s | 17.248 s | 159/159 |
+| Cascade B | 7.699 s | 6.071 s | 9.958 s | 7.909 s | 3.887 s | 30.587 s | 159/159 |
+| Cascade A | 10.463 s | 16.558 s | 26.199 s | 17.740 s | 15.736 s | 57.664 s | 159/159 |
+
+All **12 JMeter runs** had **53 HTTP 201 responses and zero recorded JMeter errors each**, for **636/636** successful recorded requests. The observed completed throughput was **53/300 = 0.1767 tickets/s (636 tickets/hour equivalent)** in every run, measured against the five-minute arrival window, **not** the eleven-minute schedule including drain. Offered load and measured throughput at this rate do not establish peak capacity.
+
+### Escalation and evidence reconciliation
+
+| Configuration | Escalated at speed test | Accepted at first stage |
+|---|---:|---:|
+| Cascade A | **147/159 (92.45%)** | 12/159 (7.55%) |
+| Cascade B | **99/159 (62.26%)** | 60/159 (37.74%) |
+
+Every one of the **636 JMeter request IDs matched a service-log record** with HTTP 201, and the database count increased by **53 on each of the 12 runs**. The logs confirm first/final model tags and escalation routing. For **Cascade B**, saved `ollama ps` snapshots before and after *each* run show **both models simultaneously resident at 100% CPU**. Cascade A's before/after residency snapshots are **missing**; request logs establish invocation of both models but do **not** independently establish continuous simultaneous residency.
+
+Traceable artifacts: [raw JMeter files and statistics](assignment2/speed/), [calibration timings](assignment2/calibration_results.json), [speed plan](assignment2/a2_speed_plan.json), [final evidence audit](assignment2/final_evidence_audit.md), [runbook](assignment2/RUNBOOK.md). The benchmark has per-run `run-1.jtl` through `run-3.jtl`, `a2_metrics.json`, `log_reconciliation.json`, and saved PC1 statistics/log snapshots.
+
+## Decision: fastest qualifying configuration
+
+**Recommend Qwen 2.5 7B for the measured Assignment 2 fixed-load operating point.**
+
+- It **passes the held-out overall floor and all seven category floors**.
+- Its **5.751 s mean run-level p50** is approximately **11.6% lower** than the Llama 3.1 8B reference's **6.505 s**; pooled p95 is also lower (15.578 vs 17.248 s).
+- It trades **2.17 percentage points of held-out accuracy** for lower measured latency (80.43% vs 82.61%).
+- **Cascade A** fails Consumer loan accuracy and has high 92.45% escalation; **Cascade B** fails Consumer loan and Money transfer accuracy even though it escalates only 62.26%.
+- Neither cascade is faster than Qwen at the tested arrival rate; Cascade A has incomplete residency evidence.
+- This conclusion addresses **A2's relative accuracy-floor decision**, not all of A1's production requirements. No measured peak capacity, long-term reliability or new hardware capacity is claimed.
+
+The frozen [prediction record](assignment2/prediction_record.md) correctly anticipated Qwen as fastest qualifying. Cascade A escalation was predicted at 80% vs **92.45% actual**; B was predicted at 65% vs **62.26% actual**. Predicted cascade latencies were approximate and were not achieved consistently, especially for Cascade A.
+
+## Setup and execution
+
+### Requirements
+
+Install **Python 3.12**, **Docker Desktop**, **Ollama**, and Git on PC1. For formal benchmarking, use **JMeter 5.6.3** and **Java 17** on a **separate PC2**. Do not place the load generator on the CPU under test.
 
 ```powershell
-git clone https://github.com/MoeMaki33/ICT3113_Assignment_1.git
-cd ICT3113_Assignment_1
+git clone https://github.com/MoeMaki33/ICT3113_Assignment_2.git
+cd ICT3113_Assignment_2
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-### 2. Install and start a local model
-
-The candidate models evaluated in the project are `gemma2:2b`, `llama3.2:3b`, `qwen2.5:7b` and `llama3.1:8b`. For a simple demonstration, use one installed candidate, for example:
+Fetch the four frozen model tags (verify model digests when reproducing the study):
 
 ```powershell
+ollama pull llama3.1:8b
+ollama pull qwen2.5:7b
 ollama pull llama3.2:3b
+ollama pull gemma2:2b
 ollama list
 ```
 
-Make sure Ollama is running. On systems where it is not already running as a service, start it with `ollama serve`. The application requests CPU inference with `num_gpu: 0`; verify actual CPU execution with `ollama ps` during a request.
+Run host Ollama and set `OLLAMA_URL=http://host.docker.internal:11434` in `.env` when running the API through Docker. A standalone Python API instead connects to `http://localhost:11434`.
 
-### 3. Configure the application
-
-Open `.env` and set these values for a **local Python run**:
+**Single-model example:**
 
 ```dotenv
-OLLAMA_MODEL=llama3.2:3b
-OLLAMA_URL=http://localhost:11434
-OLLAMA_TIMEOUT_SECONDS=120
+CLASSIFICATION_MODE=single
+OLLAMA_MODEL=qwen2.5:7b
 ```
 
-For a **Docker run** with Ollama running on the host, change `OLLAMA_URL` to `http://host.docker.internal:11434`. Keep other settings from `.env.example` unless your environment requires changes.
+**Cascade example:**
 
-### 4. Run the service
-
-**Option A — Docker (recommended for reproducing the deployment):**
-
-```powershell
-docker compose up --build
+```dotenv
+CLASSIFICATION_MODE=cascade
+CASCADE_SMALL_MODEL=llama3.2:3b
+CASCADE_LARGE_MODEL=llama3.1:8b
+CASCADE_SETTING=A
 ```
 
-**Option B — Python directly:**
+Restart/recreate the API when changing its `.env` configuration. Keep CPU/RAM allocations, model versions, inference parameters, prompt and performance-test schedule fixed for a reproducible comparison.
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
-```
-
-Once started, open **http://localhost:8000/docs** for the interactive API documentation. A new database starts empty. Successful ticket submissions are stored and remain available after a restart.
-
-Stop Docker with `docker compose down` (this does not delete the mounted data).
-
-## Trying the API
-
-Open a second PowerShell terminal while the service is running:
-
-```powershell
-$body = @{ narrative = 'I dispute a charge on my credit card.' } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri http://localhost:8000/tickets -ContentType application/json -Body $body
-Invoke-RestMethod -Uri 'http://localhost:8000/search?q=charge'
-Invoke-RestMethod -Uri http://localhost:8000/stats
-```
-
-| Endpoint | Purpose | Expected behaviour |
-|---|---|---|
-| `POST /tickets` | Classify and save a complaint | HTTP 201 with ticket ID and category |
-| `GET /search?q=charge` | Find stored tickets containing a term | Matching stored ticket records |
-| `GET /stats` | Summarise saved classifications | Counts for all seven categories, including zeros |
-
-Invalid narratives or empty search terms return HTTP 400. Classification backend failures return HTTP 502 and do not save the ticket. Each request is recorded in `logs/service.log` with a request ID and timing information; full complaint narratives are excluded from logs.
-
-## Running tests and reviewing evidence
-
-Run automated tests without requiring a real Ollama model:
-
-```powershell
+docker compose up -d --build
+docker compose exec api printenv CLASSIFICATION_MODE
+ollama ps
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-To validate the golden test set and benchmark prerequisites without generating new test traffic:
+API usage:
 
 ```powershell
-.\.venv\Scripts\python.exe -m scripts.validate_golden_set
-.\.venv\Scripts\python.exe -m scripts.perf_common
+$body = @{ narrative = "I dispute a charge on my credit card." } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/tickets -ContentType application/json -Body $body
+Invoke-RestMethod http://localhost:8000/stats
+Invoke-RestMethod "http://localhost:8000/search?q=charge"
 ```
 
-For the full performance-testing procedure, machine configuration, open-loop arrival rates, repeat runs and commands, see [Test Playbook](docs/test_playbook.md). The load generator must run on a separate machine from the API and Ollama.
-
-## Results and findings
-
-We completed **36 formal JMeter load runs** (four models, three workloads and three repetitions), **four accuracy evaluations of 180 golden-set tickets each**, and **two Qwen stress-test steps**. The golden test set and prediction record were frozen before benchmarking.
-
-### Measured model performance
-
-The latency, throughput, error-rate and search figures below are from the **mixed-load configuration of 250 ticket arrivals/hour and 450 searches/hour**, with three runs per model. The measured window was 10 minutes after a two-minute warm-up. POST p95/p99 and search p95 are **means of the three individual-run percentiles**, not pooled percentiles. Achieved throughput and error rates are shown **per run** to make variations visible.
-
-| Model | Accuracy (180 tickets) | Mean POST p95 / p99 | Successful classifications/hour (runs 1 / 2 / 3) | POST error rate (runs 1 / 2 / 3) | Mean search p95 |
-|---|---:|---:|---:|---:|---:|
-| Gemma 2B (`gemma2:2b`) | 67.2% (121/180) | 18.351 / 23.542 s | 258 / 234 / 270 | 0% / 0% / 0% | 0.055 s |
-| Llama 3.2 3B (`llama3.2:3b`) | 60.6% (109/180) | 12.800 / 16.838 s | 258 / 240 / 270 | 0% / 0% / 0% | 0.111 s |
-| Qwen 2.5 7B (`qwen2.5:7b`) | 80.6% (145/180) | 77.689 / 85.489 s | 228 / 240 / 240 | 0% / 0% / 2.174% | 0.076 s |
-| Llama 3.1 8B (`llama3.1:8b`) | 84.4% (152/180) | 97.311 / 103.680 s | 210 / 234 / 240 | 6.667% / 0% / 0% | 0.063 s |
-
-The accuracy percentages are based on the golden test set, **not** on the JMeter load-test tickets. The POST latency percentiles exclude failed requests, so they must be considered alongside the error rates.
-
-### Evaluation against requirements
-
-The team's frozen acceptance criteria are:
-
-- **R1 — Response time:** mean POST p95 ≤ 15 seconds and mean POST p99 ≤ 30 seconds.
-- **R2 — Throughput and reliability:** at least 245 successful classifications/hour and an error rate below 1% **in every run**.
-- **R3 — Accuracy:** at least 80% correct overall and at least 70% recall for **each of the seven categories**.
-- **R4 — Search performance:** mean GET /search p95 ≤ 1 second under mixed load.
-
-R1, R2 and R4 are evaluated at the mixed-load configuration described above.
-
-| Requirement | Gemma 2B | Llama 3.2 3B | Qwen 2.5 7B | Llama 3.1 8B |
-|---|---|---|---|---|
-| R1: POST latency | Fail | **Pass** | Fail | Fail |
-| R2: Throughput and error rate in every run | Fail | Fail | Fail | Fail |
-| R3: Overall and per-category accuracy | Fail | Fail | **Pass** | Fail |
-| R4: Mixed-load search latency | **Pass** | **Pass** | **Pass** | **Pass** |
-
-### Key findings and recommendation
-
-- **Llama 3.2 3B** met the POST latency requirement and had the lowest measured mean POST p95, but its 60.6% classification accuracy did not meet R3.
-- **Llama 3.1 8B** had the highest overall accuracy (84.4%), but it correctly classified only 9 of 17 Debt collection tickets (52.9% recall), below the 70% per-category minimum.
-- **Qwen 2.5 7B** was the only model to meet both parts of R3: 145/180 correct overall (80.6%), with at least 70% recall in every category. However, it failed the latency and throughput requirements.
-- **Gemma 2B** did not meet the latency or accuracy requirements. All four models met the mixed-load search latency requirement.
-
-**Recommendation:** None of the four models is demonstrated to meet all requirements on the tested CPU-only configuration. Qwen 2.5 7B is the preferred candidate for **further optimisation or hardware evaluation** because it meets the classification accuracy criteria; it is **not** recommended as an already-compliant production deployment.
-
-The second load-test run offered only 234 ticket arrivals/hour due to the Poisson arrival schedule. This contributed to R2 failures under the frozen absolute threshold, even for models with no errors; it does not by itself demonstrate insufficient processing capacity. The two Qwen stress steps showed degradation but did **not** establish a verified maximum sustainable throughput.
-
-### Supporting evidence and limitations
-
-Detailed results, methodology and traceable evidence are available in:
-
-- [Measured results and recommendation](docs/recommendation.md)
-- [Requirements evaluation](docs/requirements_evaluation.md)
-- [Accuracy evidence](results/accuracy/accuracy_summary.md)
-- [Per-model JMeter results](results/load/)
-- [Stress-test results](results/stress/)
-- [Predictions compared with results](docs/prediction_vs_results.md)
-- [Bottleneck analysis](docs/bottleneck_analysis.md)
-- [Test environment](docs/test_environment.md)
-- [Completion audit and evidence limitations](docs/completion_audit.md)
-
-All 36 formal load runs were reconciled against saved service-log extracts. The consolidated load index files cover Gemma only, so four-model comparisons should use the individual model result directories. Remaining limitations include unavailable runtime CPU/resource captures, unverified fresh model digests on the test machine, limited accuracy sample sizes, and a documented historical dataset source-hash discrepancy. These limitations restrict the conclusions that can be drawn from the measurements.
-
-## Troubleshooting
-
-| Problem | What to check or do |
+| Endpoint | Description |
 |---|---|
-| `py -3.12` is not recognised | Install Python 3.12 and ensure the Python launcher is available; check with `py --list`. |
-| Dependencies fail to install | Check that the virtual environment uses Python 3.12, then rerun `python -m pip install -r requirements.txt` using the virtual environment interpreter. |
-| Docker cannot connect to the daemon | Start Docker Desktop and wait until its engine is running; check `docker info`. |
-| Port 8000 is already in use | Stop the existing process/container on port 8000 or adjust the port mapping and request URLs. |
-| HTTP 502 when submitting a ticket | Check that Ollama is running, the selected model is installed, and `OLLAMA_URL` is reachable from the API. Review `logs/service.log` for the error type. |
-| Model not found | Run `ollama list`, pull the exact model tag, and make `OLLAMA_MODEL` match it. Restart the API. |
-| Ollama works on the host but not in Docker | Use `http://host.docker.internal:11434` for `OLLAMA_URL`. If needed, configure Ollama's listening address and restrict network access with the host firewall. |
-| Classification times out | Confirm the model is loaded and the CPU has sufficient memory. Check `OLLAMA_TIMEOUT_SECONDS`; do not change benchmark settings when reproducing recorded results. |
-| `/search` or `/stats` returns no tickets | A fresh database is intentionally empty. Submit a successful `POST /tickets` first. |
-| Golden-set validator reports a source hash mismatch | Review [golden-set provenance](docs/golden_set_provenance.md). The historical discrepancy is documented; do not regenerate labels or silently overwrite evidence. |
-| JMeter measurements differ from the report | Verify the exact model, test machine, arrival-rate configuration and raw `.jtl` files. Compare request IDs with the service logs and follow the test playbook. |
+| `POST /tickets` | Synchronously classify, save and return ID/category (HTTP 201 on success) |
+| `GET /search?q=...` | Search stored tickets |
+| `GET /stats` | Return seven category counts |
 
-## Data handling and references
+Classification backend failures return HTTP 502 and are not stored as successful tickets.
 
-The project uses the course-provided extract of the [CFPB Consumer Complaint Database](https://www.consumerfinance.gov/data-research/consumer-complaints/). Group 7 uses rows **7000–7999** for its assigned dataset. A manually adjudicated golden set of 180 complaints supports accuracy evaluation; raw consumer-selected labels are not treated as ground truth.
+### Reproduce / inspect the A2 evaluation
 
-Model details, licence references and other sources are documented in [docs/models.md](docs/models.md) and [docs/references.md](docs/references.md).
+```powershell
+# Accuracy: send only the frozen even-row tickets (requires a correctly configured live API).
+.\.venv\Scripts\python.exe -m scripts.a2_accuracy_test --name NEW_RUN_NAME --mode single --model qwen2.5:7b --api-url http://localhost:8000
+
+# Inspect existing raw results, without rerunning experiments.
+Get-Content assignment2\accuracy\qwen25_single\metrics.json
+Get-Content assignment2\speed\qwen25_single\a2_metrics.json
+
+# JMeter schedule generator: the timing arguments below are the observed A2 calibration.
+# Run on PC2, with its own checked-out copy of the repository; substitute the PC1 host IP.
+py -3 -m scripts.a2_speed_plan --timings 2.5438 2.8175 3.1268 --host PC1_IP
+
+# Compute 3-run latency metrics from saved JTLs.
+.\.venv\Scripts\python.exe -m scripts.a2_speed_metrics --config qwen25_single --duration-s 300
+
+# Join speed JTL request IDs with PC1's complete service log.
+.\.venv\Scripts\python.exe -m scripts.a2_log_analysis --mode speed --config cascade_B --log logs/service.log
+```
+
+**Important:** A2 scripts refuse to overwrite frozen output paths. The speed-plan generator must be run in a fresh workspace or after explicitly choosing how to preserve the existing `assignment2/a2_speed_plan.json`; the metric and log-analysis commands likewise refuse to overwrite their already-committed output files. See the [complete execution runbook](assignment2/RUNBOOK.md) for the restart, warm-up, simultaneous residency and before/after log procedures.
+
+## Repository navigation
+
+| Directory / file | Contents |
+|---|---|
+| [`app/`](app/) | FastAPI service, SQLite persistence, single-model classifier, cascade routing and structured request logs |
+| [`tests/`](tests/) | API, service and cascade unit/integration tests |
+| [`assignment2/`](assignment2/) | Frozen A2 split/rules/predictions, calibration, accuracy, speed and audit evidence |
+| [`assignment2/accuracy/`](assignment2/accuracy/) | All six 92-ticket classifications, category metrics, confusion matrices and request logs |
+| [`assignment2/speed/`](assignment2/speed/) | Twelve JMeter runs, raw JTLs, p50/p95 summaries, request reconciliation and PC1 snapshots |
+| [`jmeter/`](jmeter/) | Fixed open-loop JMeter plan and narrative TSV |
+| [`scripts/`](scripts/) | A1 utilities and A2 accuracy, benchmark plan, metrics and log-join scripts |
+| [`docs/`](docs/) and [`results/`](results/) | Original **Assignment 1** reports, requirements, 180-ticket accuracy and mixed-load/stress evidence |
+| [`data/`](data/) | Team dataset, adjudicated golden set, local data and labels |
+
+## Assignment 1 (historical baseline — distinct methodology)
+
+Assignment 1 evaluated all four models on **180 golden tickets**, using **mixed ticket/search load** and distinct R1–R4 criteria. Its full-set accuracy was: **Llama 3.1 8B 152/180 (84.4%)**, **Qwen 2.5 7B 145/180 (80.6%)**, **Gemma 2 2B 121/180 (67.2%)**, **Llama 3.2 3B 109/180 (60.6%)**.
+
+A1 found that no model had demonstrated simultaneous compliance with all its requirements; Qwen was the leading accuracy-qualified candidate for optimisation. That **A1 operational conclusion and its speed figures must not be confused with A2**: A2 uses only even-row accuracy, new accuracy floors, the fixed five-minute open-loop benchmark, and newly measured three-run p50/pooled p95.
+
+For the original analyses and constraints, refer to [A1 test playbook](docs/test_playbook.md), [A1 recommendation](docs/recommendation.md), [A1 requirements](docs/requirements_evaluation.md) and [A1 prediction comparison](docs/prediction_vs_results.md).
+
+## Limitations, integrity and sources
+
+- The Cascade A model-residency snapshots are missing; continuous joint residency for A is therefore not independently verified. Cascade B has saved before/after CPU residency evidence for all three runs.
+- The same fixed-rate, five-minute offered-load window does **not** prove peak sustainable throughput. The benchmark was run three times per configuration and may vary with background CPU/RAM conditions.
+- Small per-category held-out sample sizes make floor comparisons sensitive to individual classification outcomes. Report counts alongside percentages; do not tune routing to the held-out set.
+- Historical A1 observations use different runs, workload and Ollama version and are not recycled as A2 speed results.
+- Full prompt, complaint narratives and model raw responses are intentionally absent from structured service logs. Keep `.env`, credentials, backup ZIPs and private raw-data copies out of public commits.
+- AI-assisted code/document drafting must be disclosed in the assignment submission; measurements attributed to PC1/PC2 are the team's actual recorded outputs, not AI-generated benchmark data.
+
+The dataset originates from the course-provided extract of the [CFPB Consumer Complaint Database](https://www.consumerfinance.gov/data-research/consumer-complaints/), with the group's assigned original rows 7000–7999. Model and licensing references: [model documentation](docs/models.md) and [references](docs/references.md). Assignment 2 formal submission requires the team presentation (maximum eight slides) and supporting frozen rule, prediction record and workload-row list; this repository provides the reproducibility evidence.
