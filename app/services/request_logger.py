@@ -75,6 +75,7 @@ class RequestLoggingMiddleware:
                 "final_model": state.get("final_model"),
                 "escalated": state.get("escalated"),
                 "escalation_setting": state.get("escalation_setting"),
+                "first_category": state.get("first_category"),
                 "first_stage_ms": state.get("first_stage_ms"),
                 "second_stage_ms": state.get("second_stage_ms"),
                 "start_time": start.isoformat(),
