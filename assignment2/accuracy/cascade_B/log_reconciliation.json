@@ -1,0 +1,35 @@
+{
+  "configuration": "cascade_B",
+  "mode": "accuracy",
+  "input_requests": 92,
+  "matched_log_requests": 92,
+  "missing_log_requests": 0,
+  "missing_ids": [],
+  "log_status_codes": {
+    "201": 91,
+    "502": 1
+  },
+  "cascade_matched": 92,
+  "cascade_escalated": 56,
+  "cascade_accepted": 36,
+  "cascade_escalation_fraction": 0.6086956521739131,
+  "first_models": {
+    "llama3.2:3b": 92
+  },
+  "final_models": {
+    "llama3.2:3b": 36,
+    "llama3.1:8b": 56
+  },
+  "cascade_group_accuracy": {
+    "False": {
+      "count": 36,
+      "correct": 23,
+      "accuracy": 0.6388888888888888
+    },
+    "True": {
+      "count": 56,
+      "correct": 45,
+      "accuracy": 0.8035714285714286
+    }
+  }
+}

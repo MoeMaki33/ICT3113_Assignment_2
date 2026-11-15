@@ -1,0 +1,21 @@
+{
+  "configuration": "qwen25_single",
+  "mode": "speed",
+  "input_requests": 159,
+  "matched_log_requests": 159,
+  "missing_log_requests": 0,
+  "missing_ids": [],
+  "log_status_codes": {
+    "201": 159
+  },
+  "cascade_matched": 0,
+  "cascade_escalated": 0,
+  "cascade_accepted": 0,
+  "cascade_escalation_fraction": null,
+  "first_models": {
+    "qwen2.5:7b": 159
+  },
+  "final_models": {
+    "qwen2.5:7b": 159
+  }
+}
