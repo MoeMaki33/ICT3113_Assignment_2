@@ -1,0 +1,80 @@
+{
+  "correct": 59,
+  "total": 92,
+  "accuracy": 0.6413043478260869,
+  "categories": {
+    "Credit reporting": {
+      "correct": 14,
+      "total": 17,
+      "accuracy": 0.8235294117647058
+    },
+    "Debt collection": {
+      "correct": 4,
+      "total": 8,
+      "accuracy": 0.5
+    },
+    "Mortgage": {
+      "correct": 14,
+      "total": 15,
+      "accuracy": 0.9333333333333333
+    },
+    "Credit card": {
+      "correct": 10,
+      "total": 13,
+      "accuracy": 0.7692307692307693
+    },
+    "Bank account or service": {
+      "correct": 10,
+      "total": 15,
+      "accuracy": 0.6666666666666666
+    },
+    "Consumer loan": {
+      "correct": 2,
+      "total": 13,
+      "accuracy": 0.15384615384615385
+    },
+    "Money transfer or service": {
+      "correct": 5,
+      "total": 11,
+      "accuracy": 0.45454545454545453
+    }
+  },
+  "confusion_matrix": {
+    "Credit reporting": {
+      "Credit reporting": 14,
+      "Debt collection": 2,
+      "Bank account or service": 1
+    },
+    "Debt collection": {
+      "Credit reporting": 3,
+      "Debt collection": 4,
+      "Bank account or service": 1
+    },
+    "Mortgage": {
+      "Bank account or service": 1,
+      "Mortgage": 14
+    },
+    "Credit card": {
+      "Credit card": 10,
+      "Bank account or service": 2,
+      "Debt collection": 1
+    },
+    "Bank account or service": {
+      "Bank account or service": 10,
+      "Credit card": 5
+    },
+    "Consumer loan": {
+      "Consumer loan": 2,
+      "Bank account or service": 2,
+      "Debt collection": 3,
+      "Credit reporting": 3,
+      "Credit card": 3
+    },
+    "Money transfer or service": {
+      "Money transfer or service": 5,
+      "Consumer loan": 2,
+      "Credit card": 3,
+      "Bank account or service": 1
+    }
+  }
+}

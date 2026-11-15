@@ -1,0 +1,12 @@
+{
+  "created_at": "2026-11-15T12:39:49.141743+00:00",
+  "mode": "cascade",
+  "model": null,
+  "small_model": "llama3.2:3b",
+  "large_model": "llama3.1:8b",
+  "setting": "B",
+  "api_url": "http://localhost:8000",
+  "golden_sha256": "54ae476fc87e20de9356b55fd741392857bd274c6f48c0f475d1229343a46c2e",
+  "split_sha256": "85a9a4f8ad730dc9726e09220b26caa1b8cd907bcc9b1ab34dec953157ca087d",
+  "caution": "Operator must verify actual running API configuration, digests and CPU residency; CLI labels are not verification."
+}

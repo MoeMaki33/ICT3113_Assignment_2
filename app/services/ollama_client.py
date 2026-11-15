@@ -44,8 +44,8 @@ class OllamaResponseError(OllamaError):
     """Ollama answered with an HTTP error or a body that is not a usable response."""
 
 
-def generate(prompt: str) -> str:
-    model = settings.ollama_model.strip()
+def generate(prompt: str, model: str | None = None) -> str:
+    model = (settings.ollama_model if model is None else model).strip()
     if not model:
         raise OllamaConfigurationError("OLLAMA_MODEL must be configured before submitting tickets")
     url = f"{settings.ollama_url.rstrip('/')}/api/generate"

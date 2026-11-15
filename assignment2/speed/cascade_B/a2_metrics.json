@@ -1,0 +1,54 @@
+{
+  "configuration": "cascade_B",
+  "method": "JMeter POST samples; nearest-rank percentiles",
+  "runs": [
+    {
+      "run": 1,
+      "sent_samples": 53,
+      "completed_successful": 53,
+      "errors": 0,
+      "error_rate": 0.0,
+      "p50_s": 7.699,
+      "throughput_successful_per_sec": 0.17666666666666667,
+      "response_codes": {
+        "201": 53
+      },
+      "unique_request_ids": 53,
+      "note": "Reconcile GET /stats delta and service log to identify sent-but-unfinished requests; JTL samples alone cannot prove their count."
+    },
+    {
+      "run": 2,
+      "sent_samples": 53,
+      "completed_successful": 53,
+      "errors": 0,
+      "error_rate": 0.0,
+      "p50_s": 6.071,
+      "throughput_successful_per_sec": 0.17666666666666667,
+      "response_codes": {
+        "201": 53
+      },
+      "unique_request_ids": 53,
+      "note": "Reconcile GET /stats delta and service log to identify sent-but-unfinished requests; JTL samples alone cannot prove their count."
+    },
+    {
+      "run": 3,
+      "sent_samples": 53,
+      "completed_successful": 53,
+      "errors": 0,
+      "error_rate": 0.0,
+      "p50_s": 9.958,
+      "throughput_successful_per_sec": 0.17666666666666667,
+      "response_codes": {
+        "201": 53
+      },
+      "unique_request_ids": 53,
+      "note": "Reconcile GET /stats delta and service log to identify sent-but-unfinished requests; JTL samples alone cannot prove their count."
+    }
+  ],
+  "mean_p50_s": 7.9093333333333335,
+  "spread_p50_s": 3.8870000000000005,
+  "pooled_p95_s": 30.587,
+  "pooled_p95_sample_count": 159,
+  "do_not_report_p99": true,
+  "caution": "Escalation fraction, unfinished requests and GET /stats completion deltas need separate service logs / operator run metadata."
+}
