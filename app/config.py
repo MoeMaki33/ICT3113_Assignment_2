@@ -26,8 +26,8 @@ class Settings:
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./data/tickets.db")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     classification_mode: str = os.getenv("CLASSIFICATION_MODE", "single").strip().lower()
-    cascade_small_model: str = os.getenv("CASCADE_SMALL_MODEL", "llama3.2:3b").strip()
-    cascade_large_model: str = os.getenv("CASCADE_LARGE_MODEL", "llama3.1:8b").strip()
+    cascade_small_model: str = os.getenv("CASCADE_SMALL_MODEL", "").strip()
+    cascade_large_model: str = os.getenv("CASCADE_LARGE_MODEL", "").strip()
     cascade_setting: str = os.getenv("CASCADE_SETTING", "A").strip().upper()
 
 
